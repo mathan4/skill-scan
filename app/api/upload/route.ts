@@ -80,13 +80,14 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
       id: `resume-${Date.now()}`,
       values: embedding,
       metadata: {
-          name: metadata.name , 
-          skills: metadata.skills,
-          experience: metadata.experience ,
-          email: email,
-          resume: resumeText,
+        name: metadata.name || "unknown", 
+        skills: metadata.skills || [], 
+        experience: metadata.experience || "No experience", 
+        email: typeof email === 'string' ? email : "no email", 
+        resume: resumeText || "not defined",  
       },
-  };
+    };
+    
 
     // Step 4: Upsert the vector to Pinecone
     await pineconeIndex.upsert([vector]); // Pass the vector directly in an array
@@ -98,30 +99,69 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
   }
 };
 
-export async function searchResumes(query: string) {
+interface ResumeText {
+  email: string;
+  contact: string;
+  name: string;
+  skills: string[];
+  experience: string;
+}
+
+interface feedback {
+  feedback: string;
+}
+
+// Define the API response structure
+interface ApiResponse {
+  feedback: feedback;
+  resumes: {
+    resumeText: ResumeText;
+  }[];
+}
+export async function searchResumes(query: string): Promise<{ resumeText: ResumeText }[]> {
   try {
-    // Create embedding for the query using Google Gemini
     const queryEmbedding = await generateEmbedding(query);
 
     const index = pinecone.Index("skill-scan-index");
     if (!queryEmbedding || !Array.isArray(queryEmbedding)) {
       throw new Error("Embedding generation failed or returned an invalid value.");
     }
-    // Search Pinecone index for similar resumes
+
     const searchResults = await index.query({
       vector: queryEmbedding as number[],
-      topK: 5, // Number of results to return
-      includeValues: true, // Include the stored vectors
-      includeMetadata: true, // Include metadata (such as resume content)
+      topK: 5,
+      includeValues: true,
+      includeMetadata: true,
     });
-   
-    
-    // Process and return the search results
-    const resumes = searchResults.matches?.map((match) => ({
-      id: match.id,
-      score: match.score,
-      resumeText: match.metadata, // Assuming you stored the resume content in metadata
-    }));
+
+    // Cast the results properly before passing to generateFeedback
+    const resumes = searchResults.matches?.map((match) => {
+      const metadata = match.metadata;
+
+      // Check if metadata exists and if it's of type ResumeText
+      if (!metadata) {
+        return {
+          resumeText: {
+            email: "Not Available",
+            contact: "Not Available",
+            name: "Not Available",
+            skills: [],
+            experience: "No experience"
+          },
+        };
+      }
+
+      // Cast RecordMetadata to ResumeText (ensure the structure matches)
+      const resumeText: ResumeText = {
+        email: String(metadata.email) || "Not Available",  // Ensuring it's always a string
+        contact: String(metadata.contact || "Not Available"), // Ensuring it's a string
+        name: String(metadata.name || "Not Available"),
+        skills: Array.isArray(metadata.skills) ? metadata.skills : [], // Ensuring skills is an array of strings
+        experience: String(metadata.experience || "No experience")
+      };
+
+      return { resumeText };
+    }) || [];
 
     return resumes;
   } catch (error) {
@@ -129,35 +169,36 @@ export async function searchResumes(query: string) {
     throw new Error('Failed to search resumes');
   }
 }
-
-const generateFeedback = async (query: string, resumes: any[]) => {
+const generateFeedback = async (query: string, resumes: { resumeText: ResumeText }[]): Promise<ApiResponse> => {
   try {
     // Placeholder feedback based on the query
-    const feedback = `Based on your query for '${query}', here are the most relevant resumes.`;
+    const feedbackMessage = `Based on your query for '${query}', here are the most relevant resumes.`;
 
     // Map the resumes data to match the structure required by the frontend
     const matchingResumes = resumes.map((resume) => {
-      // Check if metadata exists and contains the required fields
       const metadata = resume.resumeText;
-     
 
-      // Check if metadata exists before trying to access its properties
       if (!metadata) {
         console.error('Metadata is missing or undefined for this resume');
         return {
-          metadata: {
+          resumeText: {
             name: 'Not Available',
             experience: 'Not Available',
             skills: [],
+            email: 'Not Available',
+            contact: 'Not Available'
           },
         };
       }
-      return {metadata};
+      return { resumeText: metadata };
     });
 
+
     // Create the final JSON response
-    const response = {
-      feedback,
+    const response: ApiResponse = {
+      feedback: {
+        feedback: feedbackMessage,
+      },
       resumes: matchingResumes,
     };
 
@@ -167,7 +208,6 @@ const generateFeedback = async (query: string, resumes: any[]) => {
     throw new Error('Failed to generate feedback');
   }
 };
-
 // POST handler for both resume upload and candidate search
 export async function POST(req: Request) {
   try {
