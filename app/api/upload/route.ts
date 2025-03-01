@@ -76,7 +76,7 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
     // Step 2: Get Pinecone Index
     const pineconeIndex = pinecone.Index('skill-scan-index'); // Use your Pinecone index name
 
-    const vector = {
+   const vector = {
       id: `resume-${Date.now()}`,
       values: embedding,
       metadata: {
