@@ -30,7 +30,7 @@ export default function CandidateSearch() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      const response = await axios.post<ApiResponse>('/api/upload', { query });
+      const response = await axios.post<ApiResponse>('/api/search', { query });
       setResults(response.data);
       console.log(response.data);
     } catch (error) {
