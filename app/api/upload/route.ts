@@ -76,17 +76,18 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
     // Step 2: Get Pinecone Index
     const pineconeIndex = pinecone.Index('skill-scan-index'); // Use your Pinecone index name
 
-    const vector = {
+   const vector = {
       id: `resume-${Date.now()}`,
       values: embedding,
       metadata: {
-          name: metadata.name , 
-          skills: metadata.skills,
-          experience: metadata.experience ,
-          email: email,
-          resume: resumeText,
+        name: metadata.name || "unknown", 
+        skills: metadata.skills || [], 
+        experience: metadata.experience || "No experience", 
+        email: typeof email === 'string' ? email : "no email", 
+        resume: resumeText || "not defined",  
       },
-  };
+    };
+    
 
     // Step 4: Upsert the vector to Pinecone
     await pineconeIndex.upsert([vector]); // Pass the vector directly in an array
