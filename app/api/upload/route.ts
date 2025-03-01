@@ -4,11 +4,10 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
 
-
 // Load environment variables from .env file
 dotenv.config();
 
-// Ensure that the API key is always a string by providing a fallback (e.g., an empty string)
+// Ensure that the API key is always a string by providing a fallback
 const apiKey = `${process.env.NEXT_PUBLIC_PINE_CONE_API_KEY}`;
 const GEN_AI_API_KEY = `${process.env.NEXT_PUBLIC_GEN_AI_API_KEY}`;
 
@@ -17,15 +16,15 @@ const pinecone = new Pinecone({
 });
 
 const genAI = new GoogleGenerativeAI(GEN_AI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "text-embedding-004" }); // Choose the appropriate model
+const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
 // Function to generate embeddings for parsed resume text
 const generateEmbedding = async (resumeText: string) => {
   try {
     // Generate embedding using Google Gemini embeddings API
-    const result = await model.embedContent(resumeText); // Input the parsed resume text
+    const result = await model.embedContent(resumeText);
     console.log("Generated Embedding:", result.embedding.values);
-    return result.embedding.values; // Return embedding vector values
+    return result.embedding.values;
   } catch (error) {
     console.error("Error generating embedding with Gemini:", error);
     throw error;
@@ -76,7 +75,7 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
     // Step 2: Get Pinecone Index
     const pineconeIndex = pinecone.Index('skill-scan-index'); // Use your Pinecone index name
 
-   const vector = {
+    const vector = {
       id: `resume-${Date.now()}`,
       values: embedding,
       metadata: {
@@ -87,7 +86,6 @@ const upsertResumeEmbeddingToPinecone = async (resumeText: string, email: FormDa
         resume: resumeText || "not defined",  
       },
     };
-    
 
     // Step 4: Upsert the vector to Pinecone
     await pineconeIndex.upsert([vector]); // Pass the vector directly in an array
@@ -107,18 +105,20 @@ interface ResumeText {
   experience: string;
 }
 
-interface feedback {
+interface Feedback {
   feedback: string;
 }
 
 // Define the API response structure
 interface ApiResponse {
-  feedback: feedback;
+  feedback: Feedback;
   resumes: {
     resumeText: ResumeText;
   }[];
 }
-export async function searchResumes(query: string): Promise<{ resumeText: ResumeText }[]> {
+
+// This is now a non-exported helper function
+async function searchResumes(query: string): Promise<{ resumeText: ResumeText }[]> {
   try {
     const queryEmbedding = await generateEmbedding(query);
 
@@ -134,11 +134,11 @@ export async function searchResumes(query: string): Promise<{ resumeText: Resume
       includeMetadata: true,
     });
 
-    // Cast the results properly before passing to generateFeedback
+    // Fix the TypeScript error by using proper types
     const resumes = searchResults.matches?.map((match) => {
       const metadata = match.metadata;
 
-      // Check if metadata exists and if it's of type ResumeText
+      // Check if metadata exists
       if (!metadata) {
         return {
           resumeText: {
@@ -153,10 +153,10 @@ export async function searchResumes(query: string): Promise<{ resumeText: Resume
 
       // Cast RecordMetadata to ResumeText (ensure the structure matches)
       const resumeText: ResumeText = {
-        email: String(metadata.email) || "Not Available",  // Ensuring it's always a string
-        contact: String(metadata.contact || "Not Available"), // Ensuring it's a string
+        email: String(metadata.email) || "Not Available",
+        contact: String(metadata.contact || "Not Available"),
         name: String(metadata.name || "Not Available"),
-        skills: Array.isArray(metadata.skills) ? metadata.skills : [], // Ensuring skills is an array of strings
+        skills: Array.isArray(metadata.skills) ? metadata.skills : [],
         experience: String(metadata.experience || "No experience")
       };
 
@@ -169,6 +169,7 @@ export async function searchResumes(query: string): Promise<{ resumeText: Resume
     throw new Error('Failed to search resumes');
   }
 }
+
 const generateFeedback = async (query: string, resumes: { resumeText: ResumeText }[]): Promise<ApiResponse> => {
   try {
     // Placeholder feedback based on the query
@@ -193,7 +194,6 @@ const generateFeedback = async (query: string, resumes: { resumeText: ResumeText
       return { resumeText: metadata };
     });
 
-
     // Create the final JSON response
     const response: ApiResponse = {
       feedback: {
@@ -208,6 +208,7 @@ const generateFeedback = async (query: string, resumes: { resumeText: ResumeText
     throw new Error('Failed to generate feedback');
   }
 };
+
 // POST handler for both resume upload and candidate search
 export async function POST(req: Request) {
   try {
@@ -215,7 +216,7 @@ export async function POST(req: Request) {
     if (req.headers.get('content-type')?.includes('multipart/form-data')) {
       const formData = await req.formData();
       const file = formData.get('resume') as Blob | null;
-      const email= formData.get('email');
+      const email = formData.get('email');
 
       if (!file) {
         return NextResponse.json({ message: "No file uploaded." }, { status: 400 });
@@ -227,7 +228,7 @@ export async function POST(req: Request) {
       const parsedResume = pdfData.text;
 
       // Upsert the parsed resume embedding to Pinecone
-      await upsertResumeEmbeddingToPinecone(parsedResume,email);
+      await upsertResumeEmbeddingToPinecone(parsedResume, email);
 
       return NextResponse.json({ message: "File uploaded, parsed, and upserted successfully.", data: parsedResume });
     }
@@ -244,6 +245,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ feedback, resumes });
   } catch (error) {
     console.error('Error processing request:', error);
-    return NextResponse.json({ message: "Failed to process request.", error }, { status: 500 });
+    return NextResponse.json({ message: "Failed to process request.", error: String(error) }, { status: 500 });
   }
 }
